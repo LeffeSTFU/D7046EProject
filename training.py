@@ -134,13 +134,13 @@ plt.plot(train_losses)
 plt.title('Training Loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
-#plt.show()
+plt.show()
 
 plt.plot(val_losses)
 plt.title('Validation Loss')
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
-#plt.show()
+plt.show()
 
 # Check if the model exists
 if os.path.exists('model.pth'):
@@ -167,30 +167,12 @@ for img_idx, img_path in enumerate(img_paths_test):
 
     with torch.no_grad():
         output = network(img_tensor)
-    # prediction = network(img_tensor)
-    # Get Binary prediction
-    # prediction = torch.argmax(prediction, dim=0)
-
-    # if any value is above 0.5, then it's a cloud
-
-    # print(output.detach().numpy())
-
-
-    # print(f'Prediction: {predicted} | True: {molndis}')
-    # print(output.argmax(dim=1))
-    #print(output.mean().detach().numpy() > 0.5)
-    #print(molndis)
-    #print(f'{output.sum()} | True: {molndis}')
 
     if output.mean().detach().numpy() >= 0.5 and int(molndis) == 1:
         accuracy += 1
     elif output.mean().detach().numpy() < 0.5 and int(molndis) == 0:
         accuracy += 1
 
-    #if output.sum() > 2 and int(molndis) == 1:
-    #    accuracy += 1
-    #elif output.sum() < 2 and int(molndis) == 0:
-    #    accuracy += 1
     total += 1
 
 print(f'Accuracy: {accuracy / total * 100}%')
