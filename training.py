@@ -4,6 +4,8 @@ import xarray as xr
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
 
 BASE_PATH_DATA = '/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data/skogsstyrelsen'
 
@@ -42,11 +44,6 @@ BAND_NAMES = ['b01', 'b02', 'b03', 'b04', 'b05', 'b06', 'b07', 'b08', 'b8a', 'b0
 
 train_losses = []
 val_losses = []
-
-# Load the model
-
-## Set models learning rate
-
 
 DO_TRAINING = False
 
@@ -147,8 +144,8 @@ if os.path.exists('model.pth'):
     network.load_state_dict(torch.load('model.pth'))
 
 network.eval()
-accuracy = 0
-total = 0
+true_labels = []
+predicted_labels = []
 # Test
 for img_idx, img_path in enumerate(img_paths_test):
     img_path = img_path.replace("../data", "/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data")
@@ -168,13 +165,47 @@ for img_idx, img_path in enumerate(img_paths_test):
     with torch.no_grad():
         output = network(img_tensor)
 
-    if output.mean().detach().numpy() >= 0.5 and int(molndis) == 1:
-        accuracy += 1
-    elif output.mean().detach().numpy() < 0.5 and int(molndis) == 0:
-        accuracy += 1
+        # Append true and predicted labels
+    true_labels.append(int(molndis))
+    predicted_labels.append(1 if output.mean().detach().numpy() >= 0.5 else 0)
 
-    total += 1
+print(f'Accuracy: {np.mean(np.array(true_labels) == np.array(predicted_labels)) * 100:.2f}%')
 
-print(f'Accuracy: {accuracy / total * 100}%')
+conf_matrix = confusion_matrix(true_labels, predicted_labels)
+print(conf_matrix)
+# Plot confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(conf_matrix, annot=True, cmap='Blues', fmt='g', xticklabels=['Predicted 0', 'Predicted 1'],
+            yticklabels=['Actual 0', 'Actual 1'])
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix')
+plt.show()
 
 # print(f'\rimg {img_idx + 1}/{len(img_paths_test)}, loss {loss}', end='')
+
+
+# eval One Image
+def oneImage(img_data):
+    img_path = img_data.replace("../data", "/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data")
+    img = xr.open_dataset(img_path)
+
+    band_list = []
+    for band_name in BAND_NAMES:
+        band_list.append((getattr(img, band_name).values - 1000) / 10000)
+    img = np.concatenate(band_list, axis=0)
+    img = np.transpose(img, [1, 2, 0])
+    img = img[:20, :20, :]
+    img_tensor = torch.tensor(img, dtype=torch.float32)
+
+    # Image have a size either 20 or 21 on both H or W, so cut it to 20x20
+
+    img_tensor = img_tensor.reshape(1, -1, 20 * 20)
+
+    with torch.no_grad():
+        predict = network(img_tensor)
+
+    if predict.mean().detach().numpy() >= 0.5:
+        return 1
+    else:
+        return 0
