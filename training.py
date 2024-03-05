@@ -175,8 +175,8 @@ conf_matrix = confusion_matrix(true_labels, predicted_labels)
 print(conf_matrix)
 # Plot confusion matrix
 plt.figure(figsize=(8, 6))
-sns.heatmap(conf_matrix, annot=True, cmap='Blues', fmt='g', xticklabels=['Predicted 0', 'Predicted 1'],
-            yticklabels=['Actual 0', 'Actual 1'])
+sns.heatmap(conf_matrix, annot=True, cmap='Blues', fmt='g', xticklabels=['Predicted Clear', 'Predicted Cloudy'],
+            yticklabels=['Actual Clear', 'Actual Cloudy'])
 plt.xlabel('Predicted label')
 plt.ylabel('True label')
 plt.title('Confusion Matrix')
