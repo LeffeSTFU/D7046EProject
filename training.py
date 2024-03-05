@@ -9,8 +9,8 @@ import seaborn as sns
 
 BASE_PATH_DATA = '/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data/skogsstyrelsen'
 
-epochs = 100
-gamma = 1e-5  # Learning rate
+epochs = 25
+gamma = 1e-5  # Learning rates
 gamma_loss = 0.95
 H1 = 100
 batch_size = 100
@@ -47,43 +47,16 @@ val_losses = []
 
 DO_TRAINING = False
 
-BEST_LOSS = 1000
+BEST_LOSS = 10000
 
 if DO_TRAINING:
 
     for epoch in range(epochs):
 
-        network.eval()
-        # Validation
-        for img_idx, img_path in enumerate(img_paths_val):
-            img_path = img_path.replace("../data", "/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data")
-            img = xr.open_dataset(img_path)
-
-            band_list = []
-            for band_name in BAND_NAMES:
-                band_list.append((getattr(img, band_name).values - 1000) / 10000)
-            img = np.concatenate(band_list, axis=0)
-            img = np.transpose(img, [1, 2, 0])
-            img = img[:20, :20, :]
-            img_tensor = torch.tensor(img, dtype=torch.float32)
-            img_tensor = img_tensor.reshape(1, -1, 20 * 20)
-
-            molndis = json_content_val[img_idx]['MolnDis']
-            molndis_tensor = torch.tensor([int(molndis)], dtype=torch.float32).repeat(1, 12, 2)
-
-            prediction = network(img_tensor)
-            loss = loss_function(prediction, molndis_tensor)
-            val_losses.append(loss.item())
-            print(f'\rEpoch {epoch + 1}/{epochs}, img {img_idx + 1}/{len(img_paths_val)}, loss {loss}', end='')
-            # Save the model if it's the best one
-            if loss < BEST_LOSS:
-                if loss == 0:
-                    continue
-                print(f'\nNew best loss: {loss}')
-                BEST_LOSS = loss
-                torch.save(network.state_dict(), 'model.pth')
-
         network.train()
+
+        avg_loss_train = []
+
         # Training
         for img_idx, img_path in enumerate(img_paths_train):
 
@@ -94,6 +67,7 @@ if DO_TRAINING:
             band_list = []
             for band_name in BAND_NAMES:
                 band_list.append((getattr(img, band_name).values - 1000) / 10000)  # -1k and then 10k division
+
             img = np.concatenate(band_list, axis=0)
             img = np.transpose(img, [1, 2, 0])
             img = img[:20, :20, :]
@@ -122,24 +96,57 @@ if DO_TRAINING:
             # Clear stored gradient values
             optimizer.zero_grad()
 
-            train_losses.append(loss.item())
+            avg_loss_train.append(loss.item())
 
             print(f'\rEpoch {epoch + 1}/{epochs}, img {img_idx + 1}/{len(img_paths_train)}, loss {loss}', end='')
 
+        loss = np.mean(avg_loss_train)
+        train_losses.append(loss)
+
+        network.eval()
+        # Validation
+        avg_loss_val = []
+        for img_idx, img_path in enumerate(img_paths_val):
+            img_path = img_path.replace("../data", "/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data")
+            img = xr.open_dataset(img_path)
+
+            band_list = []
+            for band_name in BAND_NAMES:
+                band_list.append((getattr(img, band_name).values - 1000) / 10000)
+            img = np.concatenate(band_list, axis=0)
+            img = np.transpose(img, [1, 2, 0])
+            img = img[:20, :20, :]
+            img_tensor = torch.tensor(img, dtype=torch.float32)
+            img_tensor = img_tensor.reshape(1, -1, 20 * 20)
+
+            molndis = json_content_val[img_idx]['MolnDis']
+            molndis_tensor = torch.tensor([int(molndis)], dtype=torch.float32).repeat(1, 12, 2)
+
+            with torch.no_grad():
+                prediction = network(img_tensor)
+            loss = loss_function(prediction, molndis_tensor)
+            # val_losses.append(loss.item())
+            print(f'\rEpoch {epoch + 1}/{epochs}, img {img_idx + 1}/{len(img_paths_val)}, loss {loss}', end='')
+            avg_loss_val.append(loss.item())
+            # Save the model if it's the best one
+
+        # get avg of avg_loss_val
+        loss = np.mean(avg_loss_val)
+        val_losses.append(loss)
+        if loss < BEST_LOSS:
+            print(f'\rNew best loss: {loss}', end='')
+            BEST_LOSS = loss
+            torch.save(network.state_dict(), 'model.pth')
 # Plot the training loss per epoch
-plt.plot(train_losses)
-plt.title('Training Loss')
+plt.plot(train_losses, label='Training Loss')
+plt.plot(val_losses, label='Validation Loss')
+plt.title('Training/Validation Loss')
+plt.legend()
 plt.xlabel('Epochs')
 plt.ylabel('Loss')
 plt.show()
 
-plt.plot(val_losses)
-plt.title('Validation Loss')
-plt.xlabel('Epochs')
-plt.ylabel('Loss')
-plt.show()
-
-# Check if the model exists
+# Check if the model existss
 if os.path.exists('model.pth'):
     network.load_state_dict(torch.load('model.pth'))
 
@@ -147,6 +154,7 @@ network.eval()
 true_labels = []
 predicted_labels = []
 # Test
+
 for img_idx, img_path in enumerate(img_paths_test):
     img_path = img_path.replace("../data", "/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data")
     img = xr.open_dataset(img_path)
@@ -169,7 +177,7 @@ for img_idx, img_path in enumerate(img_paths_test):
     true_labels.append(int(molndis))
     predicted_labels.append(1 if output.mean().detach().numpy() >= 0.5 else 0)
 
-print(f'Accuracy: {np.mean(np.array(true_labels) == np.array(predicted_labels)) * 100:.2f}%')
+print(f'\nAccuracy: {np.mean(np.array(true_labels) == np.array(predicted_labels)) * 100:.2f}%')
 
 conf_matrix = confusion_matrix(true_labels, predicted_labels)
 print(conf_matrix)
@@ -181,31 +189,3 @@ plt.xlabel('Predicted label')
 plt.ylabel('True label')
 plt.title('Confusion Matrix')
 plt.show()
-
-# print(f'\rimg {img_idx + 1}/{len(img_paths_test)}, loss {loss}', end='')
-
-
-# eval One Image
-def oneImage(img_data):
-    img_path = img_data.replace("../data", "/Users/magnusson/PycharmProjects/ml-cloud-opt-thick/data")
-    img = xr.open_dataset(img_path)
-
-    band_list = []
-    for band_name in BAND_NAMES:
-        band_list.append((getattr(img, band_name).values - 1000) / 10000)
-    img = np.concatenate(band_list, axis=0)
-    img = np.transpose(img, [1, 2, 0])
-    img = img[:20, :20, :]
-    img_tensor = torch.tensor(img, dtype=torch.float32)
-
-    # Image have a size either 20 or 21 on both H or W, so cut it to 20x20
-
-    img_tensor = img_tensor.reshape(1, -1, 20 * 20)
-
-    with torch.no_grad():
-        predict = network(img_tensor)
-
-    if predict.mean().detach().numpy() >= 0.5:
-        return 1
-    else:
-        return 0
